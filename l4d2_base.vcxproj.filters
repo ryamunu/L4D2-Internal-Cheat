@@ -21,6 +21,7 @@
     <ClCompile Include="SDK\DrawManager\DrawManager.cpp" />
     <ClCompile Include="SDK\SDK.cpp" />
     <ClCompile Include="Entry\Entry.cpp" />
+    <ClCompile Include="Features\Config\Config.cpp" />
     <ClCompile Include="Features\ESP\ESP.cpp" />
     <ClCompile Include="Hooks\Hooks.cpp" />
     <ClCompile Include="Hooks\TerrorPlayer\TerrorPlayer.cpp" />
@@ -115,6 +116,7 @@
     <ClInclude Include="SDK\SDK.h" />
     <ClInclude Include="Entry\Entry.h" />
     <ClInclude Include="Features\Vars.h" />
+    <ClInclude Include="Features\Config\Config.h" />
     <ClInclude Include="Features\ESP\ESP.h" />
     <ClInclude Include="Hooks\Hooks.h" />
     <ClInclude Include="Hooks\TerrorPlayer\TerrorPlayer.h" />
@@ -428,7 +430,7 @@
     <ClInclude Include="SDK\Steam\Win32Library.h" />
   </ItemGroup>
   <ItemGroup>
-    <Library Include="SDK\DirectX\d3dx9.lib" />
+
   </ItemGroup>
   <ItemGroup>
     <None Include="SDK\DirectX\d3dx9math.inl" />

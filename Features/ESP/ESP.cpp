@@ -1,370 +1,357 @@
 #include "ESP.h"
-#include "../../SDK/L4D2/Interfaces/IInput.h"
+#include "../../SDK/EntityCache/entitycache.h"
+#include "../../SDK/L4D2/Interfaces/BaseClientDLL.h"
+#include "../../SDK/L4D2/Interfaces/ClientEntityList.h"
+#include "../../SDK/L4D2/Interfaces/EngineClient.h"
+#include "../../SDK/L4D2/Interfaces/EngineVGui.h"
+#include "../../SDK/L4D2/Interfaces/ModelInfo.h"
+#include "../../Util/Math/Math.h"
+#include "../../Util/Util.h"
+#include "../NewMenu/ImGui/imgui.h"
 #include "../Vars.h"
+#include <algorithm>
 
-const char* GetZombieName(int index) {
-	switch (index) {
-		case Boomer: {
-			return "Boomer";
-			break;
-		}
-		case Smoker: {
-			return "Smoker";
-			break;
-		}
-		case Hunter: {
-			return "Hunter";
-			break;
-		}
-		case Jockey: {
-			return "Jockey";
-			break;
-		}
-		case Spitter: {
-			return "Spitter";
-			break;
-		}
-		case Charger: {
-			return "Charger";
-			break;
-		}
-		case Tank: {
-			return "Tank";
-			break;
-		}
-		case Witch: {
-			return "Witch";
-			break;
-		}
-		default:
-			break;
-	}
-	return "Fuck niggers.";
+bool IsUselessBone(const char *name) {
+  if (strstr(name, "lean") || strstr(name, "attachment") ||
+      strstr(name, "phys") || strstr(name, "jiggle"))
+    return true;
+  return false;
 }
 
-void CFeatures_ESP::Render()
-{
-	if (!I::EngineClient->IsInGame() || I::EngineVGui->IsGameUIVisible())
-		return;
-	if (!Vars::ESP::Enabled)
-		return;
-	const int nLocalIndex = I::EngineClient->GetLocalPlayer();
-
-	C_TerrorPlayer* pLocal = I::ClientEntityList->GetClientEntity(nLocalIndex)->As<C_TerrorPlayer*>();
-
-	if (!pLocal)
-		return;
-
-	player_info_t pi;
-
-	int x, y, w, h;
-	for (int n = 1; n < (I::ClientEntityList->GetMaxEntities() + 1); n++)
-	{
-		if (n == nLocalIndex)
-			continue;
-		
-
-		IClientEntity* pEntity = I::ClientEntityList->GetClientEntity(n);
-
-		if (!pEntity || pEntity->IsDormant())
-			continue;
-
-		ClientClass* pCC = pEntity->GetClientClass();
-
-		if (!pCC)
-			continue;
-		
-		switch (pCC->m_ClassID)
-		{
-			case CTerrorPlayer:
-			case SurvivorBot:
-			{
-				C_TerrorPlayer* pPlayer = pEntity->As<C_TerrorPlayer*>();
-
-				if (pPlayer->deadflag() || !GetBounds(pPlayer, x, y, w, h))
-					break;
-
-				const int nDrawX = x + (w / 2);
-				int nDrawY = y + (h / 2);
-
-				const int nHealth = pPlayer->GetActualHealth(); //Returns health including the buffer from pills etc.
-				const int nMaxHealth = pPlayer->GetMaxHealth();
-				const int newHealth = std::clamp(nHealth, 0, nMaxHealth);
-				const bool bIsSurvivor = (pPlayer->GetTeamNumber() == TEAM_SURVIVOR);
-				int distance = U::Math.GetDistanceMeters(pLocal->GetAbsOrigin(), pPlayer->GetAbsOrigin());
-
-				const Color clrHealth = G::Util.GetHealthColor(nHealth, nMaxHealth);
-													// if it is survivor       if not 
-				const Color clrTeam = bIsSurvivor ? Vars::ESP::PlayerColor : Vars::ESP::PlayerInfectedColor;
-
-				/* box */
-				if (Vars::ESP::Box) {
-					G::Draw.OutlinedRect(x - 1, y - 1, w + 2, h + 2, Color(0, 0, 0, 255));
-					G::Draw.OutlinedRect(x, y, w, h, clrTeam);
-					G::Draw.OutlinedRect(x + 1, y + 1, w - 2, h - 2, Color(0, 0, 0, 255));
-				}
-				if (Vars::ESP::Name) {
-					if (I::EngineClient->GetPlayerInfo(n, &pi))
-					{
-						G::Draw.String(EFonts::ESP_NAME, x + (w / 2),
-							y - G::Draw.GetFontHeight(EFonts::ESP_NAME) - 1,
-							clrTeam,
-							TXT_CENTERX,
-							pi.name);
-						//G::Draw.String(EFonts::ESP_NAME, nDrawX, nDrawY, clrTeam, TXT_CENTERXY, pi.name);
-						//nDrawY += G::Draw.GetFontHeight(EFonts::ESP_NAME);
-					}
-					std::string meter = "[" + std::to_string(distance) + "M]";
-					G::Draw.String(EFonts::METER_THING, x + (w / 2),
-						y + h + 2, // 2-pixel offset below the box
-						{255,255,255,255},
-						TXT_CENTERX,
-						meter.c_str());
-				}
-				// helth
-				if (Vars::ESP::Healthbar) {
-					float flHealth = static_cast<float>(newHealth);
-					float flMaxHealth = static_cast<float>(nMaxHealth);
-					int nHeight = (h + (flHealth < flMaxHealth ? 2 : 1));
-					int nHeight2 = (h + 2);
-					float ratio = (flHealth / flMaxHealth);
-					G::Draw.Rect(x - 6, y - 1, 4, h + 2, Color(0, 0, 0, 255));
-					G::Draw.Rect(x - 5, (y + nHeight - (nHeight * ratio)), 2, (nHeight * ratio) - 1, Color(0, 255, 0, 255));
-				}
-				/*
-				if (bIsSurvivor)
-				{
-					C_BaseCombatWeapon* pWeapon = pPlayer->GetActiveWeapon();
-
-					if (pWeapon)
-					{
-						G::Draw.String(EFonts::ESP_WEAPON, nDrawX, nDrawY, { 204, 204, 204, 255 }, TXT_CENTERXY, pWeapon->GetPrintName());
-						nDrawY += G::Draw.GetFontHeight(EFonts::ESP_WEAPON);
-					}
-				}
-				*/
-				break;
-			}
-			case CWeaponSpawn:
-			{
-				C_WeaponSpawn* pSpawn = pEntity->As<C_WeaponSpawn*>();
-
-				if (!GetBounds(pSpawn, x, y, w, h))
-					break;
-
-				const int nID = U::Math.Clamp(pSpawn->GetWeaponID(), 0, 38);
-				G::Draw.String(EFonts::ESP_NAME, x + (w / 2), y + (h / 2), g_aSpawnInfo[nID].m_Color, TXT_CENTERXY, g_aSpawnInfo[nID].m_szName);
-
-				break;
-			}
-			case CPropMountedGun:
-			case CPropMinigun:
-			{
-				C_BaseMountedWeapon* pMounted = pEntity->As<C_BaseMountedWeapon*>();
-
-				if (!GetBounds(pMounted, x, y, w, h))
-					break;
-
-				const int nDrawX = x + (w / 2);
-				int nDrawY = y + (h / 2);
-
-				G::Draw.String(EFonts::ESP_NAME, nDrawX, nDrawY, { 204, 204, 204, 255 }, TXT_CENTERXY, L"mounted weapon");
-				nDrawY += G::Draw.GetFontHeight(EFonts::ESP_NAME);
-
-				G::Draw.String(EFonts::ESP_NAME, nDrawX, nDrawY, { 204, 204, 204, 255 }, TXT_CENTERXY, L"heat: %.1f", U::Math.Clamp(pMounted->m_heat() * 100.0f, 0.0f, 100.0f));
-				nDrawY += G::Draw.GetFontHeight(EFonts::ESP_NAME);
-
-				if (pMounted->m_overheated())
-				{
-					G::Draw.String(EFonts::ESP_NAME, nDrawX, nDrawY, { 240, 230, 140, 255 }, TXT_CENTERXY, L"OVERHEATED");
-					nDrawY += G::Draw.GetFontHeight(EFonts::ESP_NAME);
-				}
-
-				break;
-			}
-			case Infected: {
-				C_Infected* pInfected = pEntity->As<C_Infected*>();
-				if (!GetBounds(pInfected, x, y, w, h) || !pInfected)
-					break;
-				if (!G::Util.IsInfectedAlive(pInfected->m_usSolidFlags(), pInfected->m_nSequence(), pCC->m_ClassID))
-				{
-					continue;
-				}
-				const Color color = Vars::ESP::InfectedColor;
-				int distance = U::Math.GetDistanceMeters(pLocal->GetAbsOrigin(), pInfected->GetAbsOrigin());
-
-				//if (pInfected->GetActualHealth() == 0 || pInfected->GetHealth() == 0)
-				//	continue;
-				const int nDrawX = x + (w / 2);
-				int nDrawY = y + (h / 2);
-				if (Vars::ESP::Box) {
-					G::Draw.OutlinedRect(x - 1, y - 1, w + 2, h + 2, Color(0, 0, 0, 255));
-					G::Draw.OutlinedRect(x, y, w, h, color);
-					G::Draw.OutlinedRect(x + 1, y + 1, w - 2, h - 2, Color(0, 0, 0, 255));
-				}
-				if (Vars::ESP::Name) {
-					G::Draw.String(EFonts::ESP_NAME, x + (w / 2),
-						y - G::Draw.GetFontHeight(EFonts::ESP_NAME) - 1,
-						color,
-						TXT_CENTERX,
-						"Infected");
-					std::string meter = "[" + std::to_string(distance) + "M]";
-					G::Draw.String(EFonts::METER_THING, x + (w / 2),
-						y + h + 2, // 2-pixel offset below the box
-						{ 255,255,255,255 },
-						TXT_CENTERX,
-						meter.c_str());
-				}
-				
-				break;
-			}
-			/* GROUP_SPECIAL, GROUP_BOSS, GROUP_PLAYER can only get helth. */
-			case Boomer:
-			case Smoker:
-			case Hunter:
-			case Jockey:
-			case Spitter:
-			case Charger:
-			case Tank:
-			{
-				C_BaseEntity* pZombies = pEntity->As<C_BaseEntity*>();
-				if (!GetBounds(pZombies, x, y, w, h) || !pZombies)
-					break;
-				if (!G::Util.IsInfectedAlive(pZombies->m_usSolidFlags(), pZombies->As<C_BaseAnimating*>()->m_nSequence(), pCC->m_ClassID))
-				{
-					continue;
-				}
-				const Color color = Vars::ESP::InfectedColor;
-
-				const int nDrawX = x + (w / 2);
-				int nDrawY = y + (h / 2);
-				//int distance = (pLocal->GetAbsOrigin() - pZombies->GetAbsOrigin()).Lenght();
-				int distance = U::Math.GetDistanceMeters(pLocal->GetAbsOrigin(), pZombies->GetAbsOrigin());
-				if (Vars::ESP::Box) {
-					G::Draw.OutlinedRect(x - 1, y - 1, w + 2, h + 2, Color(0, 0, 0, 255));
-					G::Draw.OutlinedRect(x, y, w, h, color);
-					G::Draw.OutlinedRect(x + 1, y + 1, w - 2, h - 2, Color(0, 0, 0, 255));
-				}
-				if (Vars::ESP::Name) {
-					G::Draw.String(EFonts::ESP_NAME, x + (w / 2),
-						y - G::Draw.GetFontHeight(EFonts::ESP_NAME) - 1,
-						color,
-						TXT_CENTERX,
-						GetZombieName(pCC->m_ClassID)
-					);
-					std::string meter = "[" + std::to_string(distance) + "M]";
-					G::Draw.String(EFonts::METER_THING, x + (w / 2),
-						y + h + 2, // 2-pixel offset below the box
-						{ 255,255,255,255 },
-						TXT_CENTERX,
-						meter.c_str());
-				}
-				const int nHealth = pZombies->GetHealth();
-				const int nMaxHealth = pZombies->GetMaxHealth();
-				const int newHealth = std::clamp(nHealth, 0, nMaxHealth);
-				const Color clrHealth = G::Util.GetHealthColor(nHealth, nMaxHealth);
-				if (Vars::ESP::Healthbar) 
-				{
-					float flHealth = static_cast<float>(newHealth);
-					float flMaxHealth = static_cast<float>(nMaxHealth);
-					int nHeight = (h + (flHealth < flMaxHealth ? 2 : 1));
-					int nHeight2 = (h + 2);
-					float ratio = (flHealth / flMaxHealth);
-					G::Draw.Rect(x - 6, y - 1, 4, h + 2, Color(0, 0, 0, 255));
-					G::Draw.Rect(x - 5, (y + nHeight - (nHeight * ratio)), 2, (nHeight * ratio) - 1, Color(0, 255, 0, 255));
-				}
-				break;
-			}
-			case Witch:
-			{
-				C_Witch* pWitches = pEntity->As<C_Witch*>();
-				if (!GetBounds(pWitches, x, y, w, h) || !pWitches)
-					break;
-				if (!G::Util.IsInfectedAlive(pWitches->m_usSolidFlags(), pWitches->m_nSequence(), pCC->m_ClassID))
-				{
-					continue;
-				}
-				const Color color = Vars::ESP::InfectedColor;
-				int distance = U::Math.GetDistanceMeters(pLocal->GetAbsOrigin(), pWitches->GetAbsOrigin());
-				//(pLocal->GetAbsOrigin() - pWitches->GetAbsOrigin()).Lenght();
-				const int nDrawX = x + (w / 2);
-				int nDrawY = y + (h / 2);
-				if (Vars::ESP::Box) {
-					G::Draw.OutlinedRect(x - 1, y - 1, w + 2, h + 2, Color(0, 0, 0, 255));
-					G::Draw.OutlinedRect(x, y, w, h, color);
-					G::Draw.OutlinedRect(x + 1, y + 1, w - 2, h - 2, Color(0, 0, 0, 255));
-				}
-				if (Vars::ESP::Name) {
-					G::Draw.String(EFonts::ESP_NAME, x + (w / 2),
-						y - G::Draw.GetFontHeight(EFonts::ESP_NAME) - 1,
-						color,
-						TXT_CENTERX,
-						GetZombieName(pCC->m_ClassID)
-					);
-					std::string meter = "[" + std::to_string(distance) + "M]";
-					G::Draw.String(EFonts::METER_THING, x + (w / 2),
-						y + h + 2, // 2-pixel offset below the box
-						{ 255,255,255,255 },
-						TXT_CENTERX,
-						meter.c_str());
-				}
-				const int nHealth = pWitches->GetHealth();
-				const int nMaxHealth = pWitches->GetMaxHealth();
-				const Color clrHealth = G::Util.GetHealthColor(nHealth, nMaxHealth);
-				
-				/*
-				gDraw.DrawString(x + w + 2, y + iY, clrPlayerCol, "%s", pEntity->szGetClass());
-			iY += gDraw.GetESPHeight();
-				*/
-				break;
-			}
-			default:
-				break;
-		}
-	}
+const char *GetZombieName(int classId) {
+  if (classId == G::ClassID.Hunter)
+    return "Hunter";
+  if (classId == G::ClassID.Smoker)
+    return "Smoker";
+  if (classId == G::ClassID.Boomer)
+    return "Boomer";
+  if (classId == G::ClassID.Jockey)
+    return "Jockey";
+  if (classId == G::ClassID.Spitter)
+    return "Spitter";
+  if (classId == G::ClassID.Charger)
+    return "Charger";
+  if (classId == G::ClassID.Tank)
+    return "Tank";
+  if (classId == G::ClassID.Witch)
+    return "Witch";
+  if (classId == G::ClassID.Infected)
+    return "Infected";
+  return "Infected";
 }
 
-bool CFeatures_ESP::GetBounds(C_BaseEntity* pBaseEntity, int& x, int& y, int& w, int& h)
-{
-	Vector vPoints[8];
-	U::Math.BuildTransformedBox(vPoints, pBaseEntity->m_vecMins(), pBaseEntity->m_vecMaxs(), pBaseEntity->RenderableToWorldTransform());
+bool CFeatures_ESP::GetBounds(C_BaseEntity *pBaseEntity, int &x, int &y, int &w,
+                              int &h) {
+  C_BaseAnimating *pAnim = pBaseEntity->As<C_BaseAnimating *>();
+  if (pAnim) {
+    ClientClass *pCC = pBaseEntity->GetClientClass();
+    if (pCC && (pCC->m_ClassID == G::ClassID.CTerrorPlayer ||
+                pCC->m_ClassID == G::ClassID.Infected ||
+                pCC->m_ClassID == G::ClassID.Tank ||
+                pCC->m_ClassID == G::ClassID.Witch)) {
+      matrix3x4_t boneMatrices[128];
+      if (pAnim->SetupBones(boneMatrices, 128, 0x100, I::GlobalVars->curtime)) {
+        const model_t *pModel = pAnim->GetModel();
+        if (pModel) {
+          studiohdr_t *pHdr = I::ModelInfo->GetStudiomodel(pModel);
+          if (pHdr && pHdr->numbones > 0) {
+            float left = 10000, top = 10000, right = -10000, bottom = -10000;
+            int count = 0;
+            for (int i = 0; i < pHdr->numbones; i++) {
+              mstudiobone_t *pBone = pHdr->pBone(i);
+              if (!pBone || !(pBone->flags & 0x100))
+                continue;
 
-	Vector flb, brt, blb, frt, frb, brb, blt, flt;
-	if (G::Util.W2S(vPoints[3], flb) && G::Util.W2S(vPoints[5], brt)
-		&& G::Util.W2S(vPoints[0], blb) && G::Util.W2S(vPoints[4], frt)
-		&& G::Util.W2S(vPoints[2], frb) && G::Util.W2S(vPoints[1], brb)
-		&& G::Util.W2S(vPoints[6], blt) && G::Util.W2S(vPoints[7], flt)
-		&& G::Util.W2S(vPoints[6], blt) && G::Util.W2S(vPoints[7], flt))
-	{
-		const Vector vTransformed[8] = { flb, brt, blb, frt, frb, brb, blt, flt };
+              Vector vBonePos, vScr;
+              U::Math.VectorTransform(Vector(0, 0, 0), boneMatrices[i],
+                                      vBonePos);
+              if (G::Util.W2S(vBonePos, vScr)) {
+                left = (std::min)(left, vScr.x);
+                top = (std::min)(top, vScr.y);
+                right = (std::max)(right, vScr.x);
+                bottom = (std::max)(bottom, vScr.y);
+                count++;
+              }
+            }
+            if (count > 0) {
+              x = (int)left - 3;
+              y = (int)top - 3;
+              w = (int)(right - left) + 6;
+              h = (int)(bottom - top) + 6;
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
 
-		float left = flb.x;
-		float top = flb.y;
-		float righ = flb.x;
-		float bottom = flb.y;
+  Vector vMin, vMax;
+  pBaseEntity->GetRenderBounds(vMin, vMax);
 
-		for (int n = 1; n < 8; n++)
-		{
-			if (left > vTransformed[n].x)
-				left = vTransformed[n].x;
+  Vector vPoints[] = {
+      Vector(vMin.x, vMin.y, vMin.z), Vector(vMin.x, vMax.y, vMin.z),
+      Vector(vMax.x, vMax.y, vMin.z), Vector(vMax.x, vMin.y, vMin.z),
+      Vector(vMax.x, vMax.y, vMax.z), Vector(vMin.x, vMax.y, vMax.z),
+      Vector(vMin.x, vMin.y, vMax.z), Vector(vMax.x, vMin.y, vMax.z)};
 
-			if (top < vTransformed[n].y)
-				top = vTransformed[n].y;
+  const matrix3x4_t &trans = pBaseEntity->RenderableToWorldTransform();
 
-			if (righ < vTransformed[n].x)
-				righ = vTransformed[n].x;
+  float left = 10000, top = 10000, right = -10000, bottom = -10000;
 
-			if (bottom > vTransformed[n].y)
-				bottom = vTransformed[n].y;
-		}
+  int count = 0;
+  for (int i = 0; i < 8; i++) {
+    Vector vWorld, vScr;
+    U::Math.VectorTransform(vPoints[i], trans, vWorld);
+    if (G::Util.W2S(vWorld, vScr)) {
+      left = (std::min)(left, vScr.x);
+      top = (std::min)(top, vScr.y);
+      right = (std::max)(right, vScr.x);
+      bottom = (std::max)(bottom, vScr.y);
+      count++;
+    }
+  }
 
-		x = static_cast<int>(left);
-		y = static_cast<int>(bottom);
-		w = static_cast<int>(righ - left);
-		h = static_cast<int>(top - bottom);
+  if (count == 0)
+    return false;
 
-		return !(x > G::Draw.m_nScreenW || (x + w) < 0 || y > G::Draw.m_nScreenH || (y + h) < 0);
-	}
+  x = (int)left;
+  y = (int)top;
+  w = (int)(right - left);
+  h = (int)(bottom - top);
 
-	return false;
+  // Clamp to screen bounds to prevent giant off-screen boxes
+  auto clamp = [](int val, int low, int high) {
+    return (val < low) ? low : (val > high ? high : val);
+  };
+  x = clamp(x, -500, G::Draw.m_nScreenW + 500);
+  y = clamp(y, -500, G::Draw.m_nScreenH + 500);
+  w = clamp(w, 0, G::Draw.m_nScreenW * 2);
+  h = clamp(h, 0, G::Draw.m_nScreenH * 2);
+
+  return true;
+}
+
+void CFeatures_ESP::DrawSkeleton(C_BaseEntity *pEntity, Color color) {
+  C_BaseAnimating *pAnim = pEntity->As<C_BaseAnimating *>();
+  if (pAnim) {
+    matrix3x4_t boneMatrices[128];
+    if (pAnim->SetupBones(boneMatrices, 128, 0x100, I::GlobalVars->curtime)) {
+      const model_t *pModel = pAnim->GetModel();
+      if (pModel) {
+        studiohdr_t *pHdr = I::ModelInfo->GetStudiomodel(pModel);
+        if (pHdr && pHdr->numbones > 0 && pHdr->numbones <= 128) {
+          for (int i = 0; i < pHdr->numbones; i++) {
+            mstudiobone_t *pBone = pHdr->pBone(i);
+            if (!pBone || !(pBone->flags & 0x100) || pBone->parent == -1)
+              continue;
+            if (IsUselessBone(pBone->pszName()))
+              continue;
+
+            Vector vBonePos, vParentPos;
+            U::Math.VectorTransform(Vector(0, 0, 0), boneMatrices[i], vBonePos);
+            U::Math.VectorTransform(Vector(0, 0, 0),
+                                    boneMatrices[pBone->parent], vParentPos);
+
+            Vector vBoneScreen, vParentScreen;
+            if (G::Util.W2S(vBonePos, vBoneScreen) &&
+                G::Util.W2S(vParentPos, vParentScreen)) {
+              G::Draw.Line((int)vBoneScreen.x, (int)vBoneScreen.y,
+                           (int)vParentScreen.x, (int)vParentScreen.y, color);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void CFeatures_ESP::Render() {
+  if (!I::EngineClient || !I::EngineVGui || !I::ClientEntityList)
+    return;
+  if (!I::EngineClient->IsInGame() || I::EngineVGui->IsGameUIVisible())
+    return;
+  if (!Vars::ESP::GlobalEnable)
+    return;
+
+  const int nLocalIndex = I::EngineClient->GetLocalPlayer();
+  IClientEntity *pLocalEnt = I::ClientEntityList->GetClientEntity(nLocalIndex);
+  if (!pLocalEnt)
+    return;
+  C_TerrorPlayer *pLocal = pLocalEnt->As<C_TerrorPlayer *>();
+
+  auto ProcessGroup = [&](EGroupType groupType, auto &config) {
+    if (!config.Enabled)
+      return;
+    const auto &entities = gEntityCache.GetGroup(groupType);
+    for (const auto &pEntity : entities) {
+      if (!pEntity || pEntity->IsDormant() ||
+          pEntity->entindex() == nLocalIndex)
+        continue;
+      C_BaseEntity *pBaseEnt = pEntity->As<C_BaseEntity *>();
+      if (!pBaseEnt || !pBaseEnt->IsAlive())
+        continue;
+
+      int x, y, w, h;
+      if (!GetBounds(pBaseEnt, x, y, w, h))
+        continue;
+
+      Color drawCol = config.DrawColor;
+
+      if (config.Box) {
+        G::Draw.OutlinedRect(x - 1, y - 1, w + 2, h + 2, {0, 0, 0, 255});
+        G::Draw.OutlinedRect(x, y, w, h, drawCol);
+        G::Draw.OutlinedRect(x + 1, y + 1, w - 2, h - 2, {0, 0, 0, 255});
+      }
+
+      if (config.Name) {
+        const char *name =
+            (groupType == EGroupType::CTERRORPLAYER)
+                ? "Survivor"
+                : GetZombieName(pEntity->GetClientClass()->m_ClassID);
+        G::Draw.String(EFonts::ESP_NAME, x + (w / 2), y - 15,
+                       {255, 255, 255, 255}, TXT_CENTERX, name);
+      }
+
+      if (config.Health) {
+        int nHealth = pBaseEnt->GetHealth();
+        int nMaxHealth = pBaseEnt->GetMaxHealth();
+        if (nMaxHealth < 1)
+          nMaxHealth = 100;
+        float ratio = (float)nHealth / (float)nMaxHealth;
+        G::Draw.Rect(x - 6, y - 1, 4, h + 2, Color(0, 0, 0, 200));
+        G::Draw.Rect(x - 5, y + (h - (int)(h * ratio)), 2, (int)(h * ratio),
+                     Color(0, 255, 0, 255));
+      }
+
+      if (groupType == EGroupType::TANK && Vars::ESP::Tank.Frustration) {
+        C_TerrorPlayer *pTank = pBaseEnt->As<C_TerrorPlayer *>();
+        if (pTank) {
+          int frust = pTank->m_frustration();
+          float ratio = (float)frust / 100.0f;
+          int barW = 4, barH = h, barX = x + w + 10, barY = y;
+          G::Draw.Rect(barX, barY - 1, barW, barH + 2, Color(0, 0, 0, 200));
+          G::Draw.Rect(barX + 1, barY + (barH - (int)(barH * ratio)), barW - 2,
+                       (int)(barH * ratio), Color(255, 150, 0, 255));
+          G::Draw.String(EFonts::METER_THING, barX + 6,
+                         barY + (barH - (int)(barH * ratio)),
+                         {255, 255, 255, 255}, TXT_DEFAULT, "%d%%", frust);
+        }
+      }
+
+      if (config.Skeleton)
+        DrawSkeleton(pBaseEnt, drawCol);
+    }
+  };
+
+  ProcessGroup(EGroupType::CTERRORPLAYER, Vars::ESP::Survivors);
+  ProcessGroup(EGroupType::SPECIAL_INFECTED, Vars::ESP::SpecialInfected);
+  ProcessGroup(EGroupType::INFECTED, Vars::ESP::Common);
+  ProcessGroup(EGroupType::TANK, Vars::ESP::Tank);
+  ProcessGroup(EGroupType::WITCH, Vars::ESP::Witch);
+
+  // ITEM ESP
+  if (Vars::ESP::Items::Enabled) {
+    const auto &items = gEntityCache.GetGroup(EGroupType::ITEM);
+    for (const auto &pEntity : items) {
+      C_BaseEntity *pBase = pEntity->As<C_BaseEntity *>();
+      if (!pBase || pBase->IsDormant() || pBase->m_hOwnerEntity().IsValid())
+        continue;
+
+      Vector screen;
+      if (G::Util.W2S(pBase->WorldSpaceCenter(), screen)) {
+        const char *itemName = "Item";
+        const model_t *pModel = pBase->GetModel();
+        if (pModel) {
+          const char *modelName = I::ModelInfo->GetModelName(pModel);
+          if (modelName) {
+            if (strstr(modelName, "medkit"))
+              itemName = "Medkit";
+            else if (strstr(modelName, "pills"))
+              itemName = "Pills";
+            else if (strstr(modelName, "adrenaline"))
+              itemName = "Adrenaline";
+            else if (strstr(modelName, "m16"))
+              itemName = "M16";
+            else if (strstr(modelName, "ak47"))
+              itemName = "AK47";
+            else if (strstr(modelName, "shotgun"))
+              itemName = "Shotgun";
+            else if (strstr(modelName, "pistol"))
+              itemName = "Pistol";
+            else if (strstr(modelName, "molotov"))
+              itemName = "Molotov";
+            else if (strstr(modelName, "pipebomb"))
+              itemName = "Pipe Bomb";
+            else if (strstr(modelName, "vomitjar"))
+              itemName = "Bile Jar";
+            else if (strstr(modelName, "ammo"))
+              itemName = "Ammo";
+          }
+        }
+        G::Draw.String(EFonts::ESP_NAME, (int)screen.x, (int)screen.y,
+                       {255, 255, 255, 255}, TXT_CENTERXY, itemName);
+      }
+    }
+  }
+
+  if (Vars::HUD::CustomCrosshair)
+    DrawCrosshair();
+}
+
+void CFeatures_ESP::DrawCrosshair() {
+  int x = G::Draw.m_nScreenW / 2, y = G::Draw.m_nScreenH / 2;
+  int size = Vars::HUD::CrosshairSize, gap = Vars::HUD::CrosshairGap,
+      thickness = Vars::HUD::CrosshairThickness;
+  Color col = Vars::HUD::CrosshairColor;
+  switch (Vars::HUD::CrosshairStyle) {
+  case 0: // Cross
+    G::Draw.Rect(x - (size / 2), y - (thickness / 2), size, thickness, col);
+    G::Draw.Rect(x - (thickness / 2), y - (size / 2), thickness, size, col);
+    break;
+  case 3: // Gap Cross
+    G::Draw.Rect(x - gap - size, y - (thickness / 2), size, thickness, col);
+    G::Draw.Rect(x + gap, y - (thickness / 2), size, thickness, col);
+    G::Draw.Rect(x - (thickness / 2), y - gap - size, thickness, size, col);
+    G::Draw.Rect(x - (thickness / 2), y + gap, thickness, size, col);
+    break;
+  default:
+    G::Draw.Rect(x - 2, y - 2, 4, 4, col);
+    break;
+  }
+}
+
+void CFeatures_ESP::DrawSpectatorList(C_TerrorPlayer *pLocal) {
+  if (!pLocal || !Vars::HUD::SpectatorList)
+    return;
+
+  std::vector<std::string> spectators;
+  for (int i = 1; i <= I::EngineClient->GetMaxClients(); i++) {
+    IClientEntity *pEnt = I::ClientEntityList->GetClientEntity(i);
+    if (!pEnt || pEnt->IsDormant() || pEnt->entindex() == pLocal->entindex())
+      continue;
+    C_TerrorPlayer *pPlayer = pEnt->As<C_TerrorPlayer *>();
+    if (!pPlayer || pPlayer->IsAlive())
+      continue;
+    CBaseHandle hObsTarget = pPlayer->m_hObserverTarget();
+    if (I::ClientEntityList->GetClientEntityFromHandle(hObsTarget) ==
+        (IClientEntity *)pLocal) {
+      player_info_t pi;
+      if (I::EngineClient->GetPlayerInfo(i, &pi))
+        spectators.push_back(pi.name);
+    }
+  }
+
+  if (spectators.empty())
+    return;
+
+  ImGui::SetNextWindowSize(ImVec2(150, 0), ImGuiCond_FirstUseEver);
+  if (ImGui::Begin("Spectators", &Vars::HUD::SpectatorList,
+                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+                       ImGuiWindowFlags_AlwaysAutoResize)) {
+    for (const auto &name : spectators) {
+      ImGui::Text(name.c_str());
+    }
+    ImGui::End();
+  }
 }

@@ -1,148 +1,133 @@
 #include "AutoShove.h"
+#include "../../SDK/EntityCache/entitycache.h"
 #include "../Vars.h"
 
-bool CanShoveWitch(int rage) {
-	if (rage == 1)
-		return true;
-	else
-		return false;
-	return false;
-
-}
-bool CAutoShove::CanShove(C_TerrorPlayer* pLocal, C_Infected* pInfected) {
-	if (!pLocal || !pInfected)
-		return false;
-
-	if (pInfected->IsDormant())
-		return false;
-	if (!pInfected->ValidEntity(pInfected->m_nSequence(), pInfected->m_usSolidFlags()))
-		return false;
-	if (!pLocal->GetActiveWeapon())
-		return false;
-	if (!pLocal->CanBeShoved() || !pLocal->IsReadyToShove())
-		return false;
-	if (pInfected->GetClientClass()->m_ClassID == Witch && Vars::Ignore::IgnoreWitchUntilStartled
-		&& !CanShoveWitch(pInfected->As<C_Witch*>()->m_rage()))
-		return false;
-
-	int distance = (pLocal->GetAbsOrigin() - pInfected->GetAbsOrigin()).Lenght();
-	if (distance > 87) // if they are very close, then do it.
-		return false;
-
-	return true;
-}
-#include "../../SDK/EntityCache/entitycache.h"
-C_BaseEntity* CAutoShove::GetBestTarget(C_TerrorPlayer* pLocal) {
-	C_BaseEntity* BestEntity = nullptr;
-	float FOV = FLT_MAX;
-
-	for (const auto pInfected : gEntityCache.GetGroup(EGroupType::INFECTED))
-	{
-		if (!pInfected)
-			continue;
-		if (!CanShove(pLocal, pInfected->As<C_Infected*>()))
-			continue;
-		BestEntity = pInfected->As<C_Infected*>();
-	}
-	return BestEntity;
+// Helper to check for specials
+bool IsSpecialInfected(int id) {
+  return (id == G::ClassID.Hunter || id == G::ClassID.Smoker ||
+          id == G::ClassID.Boomer || id == G::ClassID.Jockey ||
+          id == G::ClassID.Spitter || id == G::ClassID.Charger);
 }
 
+bool CAutoShove::CanShove(C_TerrorPlayer *pLocal, C_BaseEntity *pInfected) {
+  if (!pLocal || !pInfected)
+    return false;
 
-bool PosTwo(C_BaseEntity* pSkip, C_BaseEntity* pEntity, Vector from, Vector to)
-{
-	Ray_t ray;
-	ray.Init(from, to);
+  const auto pCC = pInfected->GetClientClass();
+  if (!pCC)
+    return false;
+  int id = pCC->m_ClassID;
 
-	const uint32_t mask = (MASK_SHOT);
+  // GLOBAL FILTERS
+  if (id == G::ClassID.Infected && !Vars::AutoShove::Infected)
+    return false;
+  if (id == G::ClassID.Witch)
+    return false; // Never shove witch unless explicitly requested (user asked
+                  // to remove)
+  if (id == G::ClassID.Tank && !Vars::AutoShove::Tank)
+    return false;
 
-	CTraceFilter filter;
-	filter.pSkip = pSkip;
+  // Special Infected
+  if (IsSpecialInfected(id)) {
+    if (!Vars::AutoShove::Specials)
+      return false;
 
-	trace_t trace;
-	I::EngineTrace->TraceRay(ray, mask, &filter, &trace);
+    // Granular
+    if (id == G::ClassID.Hunter && !Vars::AutoShove::Hunter)
+      return false;
+    if (id == G::ClassID.Smoker && !Vars::AutoShove::Smoker)
+      return false;
+    if (id == G::ClassID.Jockey && !Vars::AutoShove::Jockey)
+      return false;
+    if (id == G::ClassID.Charger && !Vars::AutoShove::Charger)
+      return false;
+    if (id == G::ClassID.Boomer && !Vars::AutoShove::Boomer)
+      return false;
+    if (id == G::ClassID.Spitter && !Vars::AutoShove::Spitter)
+      return false;
+  }
 
-	return ((trace.m_pEnt && trace.m_pEnt == pEntity));
+  // Survivor check
+  if (id == G::ClassID.CTerrorPlayer && pInfected->m_iTeamNum() == 2)
+    return false;
+
+  // Range Check
+  Vector localPos = pLocal->GetAbsOrigin();
+  Vector targetPos = pInfected->GetAbsOrigin();
+  float dist = (localPos - targetPos).Length();
+
+  if (dist > 80.0f)
+    return false;
+
+  return true;
 }
 
+C_BaseEntity *CAutoShove::GetBestTarget(C_TerrorPlayer *pLocal) {
+  C_BaseEntity *BestEntity = nullptr;
+  float BestScore = 180.0f;
 
-Vector GetBestHitbox(C_BaseEntity* pEntity, C_TerrorPlayer* pLocal)
-{
-	Vector vTarget;
-	C_BaseAnimating* pAnimating = pEntity->As<C_BaseAnimating*>();
-	if (!pAnimating)
-		return Vector();
-	if (!pAnimating->GetHitboxPositionByGroup(HITGROUP_HEAD, vTarget))
-		return Vector();
-	if (!PosTwo(pLocal, pEntity, pLocal->EyePosition(), vTarget))
-		return Vector(0, 0, 0);
+  auto ProcessGroup = [&](const std::vector<IClientEntity *> &group) {
+    for (const auto pEnt : group) {
+      if (!pEnt)
+        continue;
+      C_BaseEntity *pBaseEnt = pEnt->As<C_BaseEntity *>();
+      if (!pBaseEnt || !CanShove(pLocal, pBaseEnt))
+        continue;
 
-	return vTarget;
+      Vector vAngle = U::Math.CalcAngle(pLocal->EyePosition(),
+                                        pBaseEnt->WorldSpaceCenter());
+      Vector vViewAngles;
+      I::EngineClient->GetViewAngles(vViewAngles);
+      float fov = U::Math.GetFovBetween(vViewAngles, vAngle);
+
+      if (fov < BestScore) {
+        BestScore = fov;
+        BestEntity = pBaseEnt;
+      }
+    }
+  };
+
+  if (Vars::AutoShove::Infected)
+    ProcessGroup(gEntityCache.GetGroup(EGroupType::INFECTED));
+  if (Vars::AutoShove::Specials)
+    ProcessGroup(gEntityCache.GetGroup(EGroupType::SPECIAL_INFECTED));
+  if (Vars::AutoShove::Tank)
+    ProcessGroup(gEntityCache.GetGroup(EGroupType::TANK));
+
+  return BestEntity;
 }
 
-Vector GetBestAngle(C_BaseEntity* pEntity, C_TerrorPlayer* pLocal)
-{
-	auto Hitbox = GetBestHitbox(pEntity, pLocal);
-	if (Hitbox.IsZero())
-		return Vector();
+void CAutoShove::run(C_TerrorPlayer *pLocal, CUserCmd *pCmd) {
+  if (!Vars::AutoShove::Enabled || !pLocal || !pLocal->IsAlive())
+    return;
+  if (pLocal->m_iTeamNum() < 2 || pLocal->m_isGhost())
+    return;
 
-	return U::Math.CalcAngle(pLocal->EyePosition(), GetBestHitbox(pEntity, pLocal));
-}
+  auto pWeapon = pLocal->GetActiveWeapon();
+  if (!pWeapon)
+    return;
 
-inline void FixMovementAgain(CUserCmd* pCmd, Vector m_vOldAngles, float m_fOldForward, float m_fOldSidemove)
-{
-	float deltaView = pCmd->viewangles.y - m_vOldAngles.y;
-	float f1;
-	float f2;
+  if (I::GlobalVars->curtime < pWeapon->m_flNextSecondaryAttack())
+    return;
 
-	if (m_vOldAngles.y < 0.f)
-		f1 = 360.0f + m_vOldAngles.y;
-	else
-		f1 = m_vOldAngles.y;
+  C_BaseEntity *pEntity = GetBestTarget(pLocal);
+  if (!pEntity)
+    return;
 
-	if (pCmd->viewangles.y < 0.0f)
-		f2 = 360.0f + pCmd->viewangles.y;
-	else
-		f2 = pCmd->viewangles.y;
+  // Check visibility/obstruction
+  trace_t trace;
+  Ray_t ray;
+  CTraceFilter filter;
+  filter.pSkip = pLocal;
+  ray.Init(pLocal->EyePosition(), pEntity->WorldSpaceCenter());
+  I::EngineTrace->TraceRay(ray, MASK_SHOT, &filter, &trace);
 
-	if (f2 < f1)
-		deltaView = abs(f2 - f1);
-	else
-		deltaView = 360.0f - abs(f1 - f2);
-	deltaView = 360.0f - deltaView;
+  if (trace.m_pEnt != pEntity && trace.fraction < 0.95f)
+    return;
 
-	pCmd->forwardmove = cos(DEG2RAD(deltaView)) * m_fOldForward + cos(DEG2RAD(deltaView + 90.f)) * m_fOldSidemove;
-	pCmd->sidemove = sin(DEG2RAD(deltaView)) * m_fOldForward + sin(DEG2RAD(deltaView + 90.f)) * m_fOldSidemove;
-}
-
-
-void CAutoShove::run(C_TerrorPlayer* pLocal, CUserCmd* pCmd) {
-	if (!Vars::Misc::AutoShove)
-		return;
-	if (!pLocal || !pCmd)
-		return;
-
-	auto pEntity = GetBestTarget(pLocal);
-	if (!pEntity)
-		return;
-	if (pLocal->m_iTeamNum() != TEAM_SURVIVOR)
-		return; // if we're infected, dont fucking do hitscan aimbot..
-	if (pLocal->m_isGhost())
-		return;
-	if (!pLocal->GetActiveWeapon())
-		return;
-	if (!PosTwo(pLocal, pEntity, pLocal->EyePosition(), GetBestHitbox(pEntity, pLocal)))
-		return; // Visibility check
-
-	Vector m_vOldViewAngle = pCmd->viewangles;
-	float m_fOldSideMove = pCmd->sidemove;
-	float m_fOldForwardMove = pCmd->forwardmove;
-
-	Vector Angle = GetBestAngle(pEntity, pLocal);
-
-	if (Angle.IsZero())
-		return;
-
-	pCmd->viewangles = Angle;
-	FixMovementAgain(pCmd, m_vOldViewAngle, m_fOldForwardMove, m_fOldSideMove);
-	pCmd->buttons |= IN_ATTACK2;
+  // Auto-aim/Shove
+  pCmd->viewangles =
+      U::Math.CalcAngle(pLocal->EyePosition(), pEntity->WorldSpaceCenter());
+  U::Math.ClampAngles(pCmd->viewangles);
+  pCmd->buttons |= IN_ATTACK2;
 }

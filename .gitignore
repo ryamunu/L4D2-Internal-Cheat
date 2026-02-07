@@ -1,0 +1,39 @@
+# Build artifacts
+Debug/
+Release/
+x64/
+x86/
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.log
+*.tlog
+*.idb
+*.lastbuildstate
+
+# Visual Studio files
+.vs/
+*.vcxproj.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+
+# IDE directories
+.idea/
+.vscode/
+
+# Build output
+bin/
+obj/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Injector output
+*.bin
