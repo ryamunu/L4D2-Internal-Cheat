@@ -459,7 +459,12 @@ void CMenu::Render(IDirect3DDevice9 *pDevice) {
           f::config.Save(cfgBur);
         if (ImGui::Button("Load Configuration", ImVec2(200, 30)))
           f::config.Load(cfgBur);
+        if (ImGui::Button("Delete Configuration", ImVec2(200, 30))) {
+          f::config.Remove(cfgBur);
+          cfgBur[0] = '\0'; // Clear selection after delete
+        }
         ImGui::Separator();
+
         SectionHeader("Existing Configurations");
         const auto &configs = f::config.GetConfigList();
         for (const auto &cfg : configs) {
