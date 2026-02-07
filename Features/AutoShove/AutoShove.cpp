@@ -114,20 +114,30 @@ void CAutoShove::run(C_TerrorPlayer *pLocal, CUserCmd *pCmd) {
   if (!pEntity)
     return;
 
-  // Check visibility/obstruction
+  // Check visibility using MASK_SOLID (not MASK_SHOT - traces through objects)
   trace_t trace;
   Ray_t ray;
   CTraceFilter filter;
   filter.pSkip = pLocal;
   ray.Init(pLocal->EyePosition(), pEntity->WorldSpaceCenter());
-  I::EngineTrace->TraceRay(ray, MASK_SHOT, &filter, &trace);
+  I::EngineTrace->TraceRay(ray, MASK_SOLID, &filter, &trace);
 
   if (trace.m_pEnt != pEntity && trace.fraction < 0.95f)
     return;
 
-  // Auto-aim/Shove
-  pCmd->viewangles =
+  // SILENT AIM FIX: Store original angles before aiming
+  Vector vOriginalAngles = pCmd->viewangles;
+
+  // Calculate aim angles
+  Vector vAimAngles =
       U::Math.CalcAngle(pLocal->EyePosition(), pEntity->WorldSpaceCenter());
-  U::Math.ClampAngles(pCmd->viewangles);
+  U::Math.ClampAngles(vAimAngles);
+
+  // Set viewangles for shove
+  pCmd->viewangles = vAimAngles;
+
+  // FIX MOVEMENT GLITCH: Rotate movement vectors back to original direction
+  G::Util.FixMovement(vOriginalAngles, pCmd);
+
   pCmd->buttons |= IN_ATTACK2;
 }

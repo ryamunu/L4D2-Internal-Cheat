@@ -41,18 +41,10 @@ bool __fastcall ClientMode::CreateMove::Detour(void *ecx, void *edx,
     C_TerrorWeapon *pWeapon = pLocal->GetActiveWeapon()->As<C_TerrorWeapon *>();
 
     if (pWeapon) {
-      if (Vars::Misc::Teleport) {
-        if ((GetAsyncKeyState(Vars::Misc::TeleportKey.m_Var)) <
-            0) { // AirStuck with ViewAngles reset (((Teleport to 0, 0, 0)))
-                 // (Reversed from some L4D2 hack)
-          cmd->viewangles.x = 3.4028235e38;
-          cmd->viewangles.y = 3.4028235e38;
-          cmd->viewangles.z = 3.4028235e38;
-          cmd->upmove = 3.4028235e38;
-          cmd->forwardmove = 3.4028235e38;
-          cmd->sidemove = 3.4028235e38;
-        }
-      }
+      // REMOVED: Teleport exploit (NaN viewangles) - causes instant kick/crash
+      // on modern servers The following code was removed for safety: if
+      // (Vars::Misc::Teleport) { cmd->viewangles = 3.4028235e38; ... }
+
       f::misc->run(pLocal, cmd); // run bhop before prediction for obv reasons
       F::EnginePrediction.Start(pLocal, cmd);
       {
