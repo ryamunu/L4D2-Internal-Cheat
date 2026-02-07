@@ -205,12 +205,24 @@ void CFeatures_ESP::Render() {
       }
 
       if (config.Name) {
-        const char *name =
-            (groupType == EGroupType::CTERRORPLAYER)
-                ? "Survivor"
-                : GetZombieName(pEntity->GetClientClass()->m_ClassID);
-        G::Draw.String(EFonts::ESP_NAME, x + (w / 2), y - 15,
-                       {255, 255, 255, 255}, TXT_CENTERX, name);
+        const char *name = nullptr;
+
+        if (groupType == EGroupType::CTERRORPLAYER) {
+          // Try to get actual player name
+          player_info_t info;
+          if (I::EngineClient->GetPlayerInfo(pEntity->entindex(), &info))
+            name = info.name;
+          else
+            name = "Survivor";
+        } else {
+          // Use zombie name based on ClassID
+          name = GetZombieName(pEntity->GetClientClass()->m_ClassID);
+        }
+
+        if (name) {
+          G::Draw.String(EFonts::ESP_NAME, x + (w / 2), y - 15,
+                         {255, 255, 255, 255}, TXT_CENTERX, name);
+        }
       }
 
       if (config.Health) {
@@ -219,9 +231,17 @@ void CFeatures_ESP::Render() {
         if (nMaxHealth < 1)
           nMaxHealth = 100;
         float ratio = (float)nHealth / (float)nMaxHealth;
+
+        // Health bar
         G::Draw.Rect(x - 6, y - 1, 4, h + 2, Color(0, 0, 0, 200));
         G::Draw.Rect(x - 5, y + (h - (int)(h * ratio)), 2, (int)(h * ratio),
                      Color(0, 255, 0, 255));
+
+        // Health number display
+        char hpText[16];
+        sprintf_s(hpText, "%d", nHealth);
+        G::Draw.String(EFonts::ESP_NAME, x - 8, y + h + 2, {255, 255, 255, 255},
+                       TXT_CENTERX, hpText);
       }
 
       if (groupType == EGroupType::TANK && Vars::ESP::Tank.Frustration) {

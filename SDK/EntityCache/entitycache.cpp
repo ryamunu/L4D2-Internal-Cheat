@@ -37,13 +37,39 @@ void CEntityCache::Fill() {
       if (!pBaseEnt)
         continue;
 
-      // 1. ENGINE-LEVEL PLAYER/ZOMBIE CHECKS (HIGHEST PRIORITY)
-      if (pBaseEnt->IsPlayer()) {
+      // Get team number for proper classification
+      int team = pBaseEnt->m_iTeamNum();
+
+      // TEAM 2 = Survivors, TEAM 3 = Infected
+      // Infected team (including player-controlled specials) go to zombie
+      // groups
+      if (team == 3) {
+        if (!pBaseEnt->IsAlive())
+          continue;
+
+        if (classID == G::ClassID.Tank)
+          m_vecGroups[EGroupType::TANK].push_back(pEntity);
+        else if (classID == G::ClassID.Witch)
+          m_vecGroups[EGroupType::WITCH].push_back(pEntity);
+        else if (classID == G::ClassID.Infected)
+          m_vecGroups[EGroupType::INFECTED].push_back(pEntity);
+        else if (classID == G::ClassID.Hunter || classID == G::ClassID.Smoker ||
+                 classID == G::ClassID.Boomer || classID == G::ClassID.Jockey ||
+                 classID == G::ClassID.Spitter ||
+                 classID == G::ClassID.Charger ||
+                 classID == G::ClassID.CTerrorPlayer)
+          m_vecGroups[EGroupType::SPECIAL_INFECTED].push_back(pEntity);
+        continue;
+      }
+
+      // TEAM 2 = Survivors only
+      if (team == 2) {
         if (pBaseEnt->IsAlive())
           m_vecGroups[EGroupType::CTERRORPLAYER].push_back(pEntity);
         continue;
       }
 
+      // Fallback: Use engine checks for entities without proper team
       if (pBaseEnt->IsZombie()) {
         if (!pBaseEnt->IsAlive())
           continue;
