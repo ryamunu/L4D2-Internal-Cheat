@@ -11,7 +11,10 @@
 #include <algorithm>
 #include <vector>
 
-// Production-ready hitbox selection using SetupBones + ValveBiped indices
+// Standard Source Engine hitbox targeting using HITBOX GROUPS
+// Why: Standard cheats use SetupBones + hitbox groups because groups are
+// consistent across ALL models. Bone indices vary per model, but groups don't.
+// Group 0 = Generic, Group 1 = Head, Group 2 = Chest, Group 3 = Stomach, etc.
 bool GetUniversalHitbox(C_BaseEntity *pEntity, int selection, Vector &vOut) {
   C_BaseAnimating *pAnim = pEntity->As<C_BaseAnimating *>();
   if (!pAnim) {
@@ -19,56 +22,65 @@ bool GetUniversalHitbox(C_BaseEntity *pEntity, int selection, Vector &vOut) {
     return true;
   }
 
-  // ValveBiped bone indices for L4D2
-  // 0: Head, 1: Neck, 2: Chest, 3: Stomach, 4: Pelvis
-  static const int boneIndices[] = {10, 9, 6, 3, 0};
-
-  // Bounds check
-  if (selection < 0 || selection > 4)
-    selection = 0;
-  int targetBone = boneIndices[selection];
-
-  // Setup bone matrices
+  // Setup bone matrices (standard SetupBones call)
   matrix3x4_t boneMatrix[128];
   if (!pAnim->SetupBones(boneMatrix, 128, 0x100, I::GlobalVars->curtime)) {
     vOut = pEntity->WorldSpaceCenter();
     return true;
   }
 
-  // Get studiohdr for hitbox data
+  // Get model and studio header
   const model_t *pModel = pAnim->GetModel();
   if (!pModel) {
-    U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
+    vOut = pEntity->WorldSpaceCenter();
     return true;
   }
 
   const studiohdr_t *pHdr = I::ModelInfo->GetStudiomodel(pModel);
   if (!pHdr) {
-    U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
+    vOut = pEntity->WorldSpaceCenter();
     return true;
   }
 
   const mstudiohitboxset *pSet = pHdr->pHitboxSet(pAnim->m_nHitboxSet());
-  if (!pSet) {
-    U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
+  if (!pSet || pSet->numhitboxes == 0) {
+    vOut = pEntity->WorldSpaceCenter();
     return true;
   }
 
-  // Find hitbox matching our target bone
+  // Map user selection to hitbox GROUP (not bone!)
+  // 0=Head, 1=Neck, 2=Chest, 3=Stomach, 4=Pelvis
+  // L4D2 hitbox groups: 1=Head, 2=Chest, 3=Stomach, 6=LeftLeg, 7=RightLeg
+  int targetGroups[] = {1, 1, 2, 3,
+                        3}; // Head, Neck->Head, Chest, Stomach, Pelvis->Stomach
+
+  if (selection < 0 || selection > 4)
+    selection = 0;
+  int targetGroup = targetGroups[selection];
+
+  // FIRST PASS: Find hitbox matching our target GROUP
   for (int i = 0; i < pSet->numhitboxes; i++) {
     mstudiobbox *pBox = pSet->pHitbox(i);
     if (!pBox)
       continue;
 
-    if (pBox->bone == targetBone) {
+    if (pBox->group == targetGroup) {
       Vector center = (pBox->bbmin + pBox->bbmax) * 0.5f;
       U::Math.VectorTransform(center, boneMatrix[pBox->bone], vOut);
       return true;
     }
   }
 
-  // Fallback: use bone position directly
-  U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
+  // SECOND PASS: If group not found, use first hitbox (usually head)
+  mstudiobbox *pFirstBox = pSet->pHitbox(0);
+  if (pFirstBox) {
+    Vector center = (pFirstBox->bbmin + pFirstBox->bbmax) * 0.5f;
+    U::Math.VectorTransform(center, boneMatrix[pFirstBox->bone], vOut);
+    return true;
+  }
+
+  // Final fallback
+  vOut = pEntity->WorldSpaceCenter();
   return true;
 }
 

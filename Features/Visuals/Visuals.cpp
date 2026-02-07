@@ -4,35 +4,46 @@
 
 void CVisuals::OnFrame() { RemoveVomit(); }
 
-// Production-ready optimized vomit removal with static material caching
+// Standard optimized vomit removal - static material lookup (runs once)
+// Why: Iterating ALL materials every frame kills FPS. Standard cheats cache the
+// pointer.
 void CVisuals::RemoveVomit() {
-  // Static material pointer - FindMaterial called only once
-  static IMaterial *pVomitOverlay = nullptr;
+  // Static material pointers - FindMaterial called only ONCE
+  static IMaterial *pVomitOverlay1 = nullptr;
+  static IMaterial *pVomitOverlay2 = nullptr;
+  static IMaterial *pVomitOverlay3 = nullptr;
   static bool bInitialized = false;
 
-  if (!bInitialized) {
-    if (I::MaterialSystem) {
-      pVomitOverlay = I::MaterialSystem->FindMaterial(
-          "particle/screen_effect/screen_overlay_vomit", nullptr, false);
-      if (pVomitOverlay && pVomitOverlay->IsErrorMaterial()) {
-        pVomitOverlay = nullptr;
-      }
-    }
+  if (!bInitialized && I::MaterialSystem) {
+    // L4D2 vomit material names (verified from game files)
+    pVomitOverlay1 = I::MaterialSystem->FindMaterial(
+        "effects/screenoverlay_vomit", nullptr, false);
+    pVomitOverlay2 = I::MaterialSystem->FindMaterial(
+        "particle/screen_effect/screen_overlay_vomit", nullptr, false);
+    pVomitOverlay3 = I::MaterialSystem->FindMaterial(
+        "particle/screen_effect/screen_vomit", nullptr, false);
+
+    // Clean up error materials
+    if (pVomitOverlay1 && pVomitOverlay1->IsErrorMaterial())
+      pVomitOverlay1 = nullptr;
+    if (pVomitOverlay2 && pVomitOverlay2->IsErrorMaterial())
+      pVomitOverlay2 = nullptr;
+    if (pVomitOverlay3 && pVomitOverlay3->IsErrorMaterial())
+      pVomitOverlay3 = nullptr;
+
     bInitialized = true;
   }
 
-  if (!pVomitOverlay)
-    return;
-
   bool shouldRemove = Vars::Visuals::Removals::NoBoomerVomit;
 
-  // Set NoDraw flag
-  pVomitOverlay->SetMaterialVarFlag(MATERIAL_VAR_NO_DRAW, shouldRemove);
+  auto ProcessMaterial = [shouldRemove](IMaterial *pMat) {
+    if (!pMat)
+      return;
+    pMat->SetMaterialVarFlag(MATERIAL_VAR_NO_DRAW, shouldRemove);
+    pMat->AlphaModulate(shouldRemove ? 0.0f : 1.0f);
+  };
 
-  // Force alpha modulation for overlay effects
-  if (shouldRemove) {
-    pVomitOverlay->AlphaModulate(0.0f);
-  } else {
-    pVomitOverlay->AlphaModulate(1.0f);
-  }
+  ProcessMaterial(pVomitOverlay1);
+  ProcessMaterial(pVomitOverlay2);
+  ProcessMaterial(pVomitOverlay3);
 }
