@@ -16,15 +16,15 @@ bool DoSpreadPred(C_TerrorWeapon *pWeapon) {
     return false;
   if (weaponID == WEAPON_MOLOTOV)
     return false;
-  if (weaponID == WEAPON_PIPE_BOMB)
+  if (weaponID == WEAPON_PIPEBOMB)
     return false;
   if (weaponID == WEAPON_VOMITJAR)
     return false;
   if (weaponID == WEAPON_GRENADE_LAUNCHER)
     return false;
-  if (weaponID == WEAPON_FIRST_AID_KIT)
+  if (weaponID == WEAPON_FIRSTAID_KIT)
     return false;
-  if (weaponID == WEAPON_PAIN_PILLS)
+  if (weaponID == WEAPON_PAINPILLS)
     return false;
   if (weaponID == WEAPON_ADRENALINE)
     return false;
