@@ -1,50 +1,38 @@
 #include "Visuals.h"
 #include "../../SDK/L4D2/Interfaces/MaterialSystem.h"
 #include "../Vars.h"
-#include <string>
-#include <vector>
 
 void CVisuals::OnFrame() { RemoveVomit(); }
 
+// Production-ready optimized vomit removal with static material caching
 void CVisuals::RemoveVomit() {
-  if (!I::MaterialSystem)
+  // Static material pointer - FindMaterial called only once
+  static IMaterial *pVomitOverlay = nullptr;
+  static bool bInitialized = false;
+
+  if (!bInitialized) {
+    if (I::MaterialSystem) {
+      pVomitOverlay = I::MaterialSystem->FindMaterial(
+          "particle/screen_effect/screen_overlay_vomit", nullptr, false);
+      if (pVomitOverlay && pVomitOverlay->IsErrorMaterial()) {
+        pVomitOverlay = nullptr;
+      }
+    }
+    bInitialized = true;
+  }
+
+  if (!pVomitOverlay)
     return;
 
   bool shouldRemove = Vars::Visuals::Removals::NoBoomerVomit;
 
-  // Iterate through ALL loaded materials every frame for maximum reliability
-  for (MaterialHandle_t h = I::MaterialSystem->FirstMaterial();
-       h != I::MaterialSystem->InvalidMaterial();
-       h = I::MaterialSystem->NextMaterial(h)) {
+  // Set NoDraw flag
+  pVomitOverlay->SetMaterialVarFlag(MATERIAL_VAR_NO_DRAW, shouldRemove);
 
-    IMaterial *pMat = I::MaterialSystem->GetMaterial(h);
-    if (!pMat || pMat->IsErrorMaterial())
-      continue;
-
-    const char *matName = pMat->GetName();
-    if (!matName)
-      continue;
-
-    // Check for ANY vomit/bile/slime related materials
-    bool isVomitMaterial = false;
-    if (strstr(matName, "vomit") || strstr(matName, "Vomit") ||
-        strstr(matName, "bile") || strstr(matName, "Bile") ||
-        strstr(matName, "slime") || strstr(matName, "Slime") ||
-        strstr(matName, "spit") || strstr(matName, "Spit") ||
-        strstr(matName, "boomer") || strstr(matName, "Boomer") ||
-        strstr(matName, "screen_effect")) {
-      isVomitMaterial = true;
-    }
-
-    if (isVomitMaterial) {
-      pMat->SetMaterialVarFlag(MATERIAL_VAR_NO_DRAW, shouldRemove);
-      if (shouldRemove) {
-        pMat->AlphaModulate(0.0f);
-        pMat->ColorModulate(0.0f, 0.0f, 0.0f);
-      } else {
-        pMat->AlphaModulate(1.0f);
-        pMat->ColorModulate(1.0f, 1.0f, 1.0f);
-      }
-    }
+  // Force alpha modulation for overlay effects
+  if (shouldRemove) {
+    pVomitOverlay->AlphaModulate(0.0f);
+  } else {
+    pVomitOverlay->AlphaModulate(1.0f);
   }
 }

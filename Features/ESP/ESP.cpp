@@ -250,45 +250,82 @@ void CFeatures_ESP::Render() {
   ProcessGroup(EGroupType::TANK, Vars::ESP::Tank);
   ProcessGroup(EGroupType::WITCH, Vars::ESP::Witch);
 
-  // ITEM ESP
+  // ITEM ESP - Production-ready with nullptr check pattern
   if (Vars::ESP::Items::Enabled) {
     const auto &items = gEntityCache.GetGroup(EGroupType::ITEM);
     for (const auto &pEntity : items) {
       C_BaseEntity *pBase = pEntity->As<C_BaseEntity *>();
-      if (!pBase || pBase->IsDormant() || pBase->m_hOwnerEntity().IsValid())
+      if (!pBase || pBase->IsDormant())
+        continue;
+
+      // Filter out held weapons/items
+      if (pBase->m_hOwnerEntity().IsValid())
+        continue;
+
+      const model_t *pModel = pBase->GetModel();
+      if (!pModel)
+        continue;
+
+      const char *modelName = I::ModelInfo->GetModelName(pModel);
+      if (!modelName)
+        continue;
+
+      // Start with nullptr - only set if valid match found
+      const char *itemName = nullptr;
+
+      // Health items
+      if (strstr(modelName, "medkit") || strstr(modelName, "first_aid"))
+        itemName = "Medkit";
+      else if (strstr(modelName, "painpills") ||
+               strstr(modelName, "pain_pills"))
+        itemName = "Pills";
+      else if (strstr(modelName, "adrenaline"))
+        itemName = "Adrenaline";
+      else if (strstr(modelName, "defibrillator"))
+        itemName = "Defib";
+      // Throwables
+      else if (strstr(modelName, "molotov"))
+        itemName = "Molotov";
+      else if (strstr(modelName, "pipebomb") || strstr(modelName, "pipe_bomb"))
+        itemName = "Pipe Bomb";
+      else if (strstr(modelName, "vomitjar") || strstr(modelName, "bile"))
+        itemName = "Bile Jar";
+      // Weapon spawns
+      else if (strstr(modelName, "rifle_ak47"))
+        itemName = "AK47";
+      else if (strstr(modelName, "rifle_m16") || strstr(modelName, "m16a2"))
+        itemName = "M16";
+      else if (strstr(modelName, "shotgun"))
+        itemName = "Shotgun";
+      else if (strstr(modelName, "sniper") ||
+               strstr(modelName, "hunting_rifle"))
+        itemName = "Sniper";
+      else if (strstr(modelName, "smg") || strstr(modelName, "uzi"))
+        itemName = "SMG";
+      else if (strstr(modelName, "pistol"))
+        itemName = "Pistol";
+      else if (strstr(modelName, "melee"))
+        itemName = "Melee";
+      // Upgrades
+      else if (strstr(modelName, "ammo_pack") ||
+               strstr(modelName, "upgradepack"))
+        itemName = "Ammo Pack";
+      else if (strstr(modelName, "laser"))
+        itemName = "Laser Sight";
+      // Props
+      else if (strstr(modelName, "gascan"))
+        itemName = "Gas Can";
+      else if (strstr(modelName, "propane"))
+        itemName = "Propane";
+      else if (strstr(modelName, "oxygentank"))
+        itemName = "Oxygen Tank";
+
+      // CRITICAL: If no match found, skip this entity entirely
+      if (!itemName)
         continue;
 
       Vector screen;
       if (G::Util.W2S(pBase->WorldSpaceCenter(), screen)) {
-        const char *itemName = "Item";
-        const model_t *pModel = pBase->GetModel();
-        if (pModel) {
-          const char *modelName = I::ModelInfo->GetModelName(pModel);
-          if (modelName) {
-            if (strstr(modelName, "medkit"))
-              itemName = "Medkit";
-            else if (strstr(modelName, "pills"))
-              itemName = "Pills";
-            else if (strstr(modelName, "adrenaline"))
-              itemName = "Adrenaline";
-            else if (strstr(modelName, "m16"))
-              itemName = "M16";
-            else if (strstr(modelName, "ak47"))
-              itemName = "AK47";
-            else if (strstr(modelName, "shotgun"))
-              itemName = "Shotgun";
-            else if (strstr(modelName, "pistol"))
-              itemName = "Pistol";
-            else if (strstr(modelName, "molotov"))
-              itemName = "Molotov";
-            else if (strstr(modelName, "pipebomb"))
-              itemName = "Pipe Bomb";
-            else if (strstr(modelName, "vomitjar"))
-              itemName = "Bile Jar";
-            else if (strstr(modelName, "ammo"))
-              itemName = "Ammo";
-          }
-        }
         G::Draw.String(EFonts::ESP_NAME, (int)screen.x, (int)screen.y,
                        {255, 255, 255, 255}, TXT_CENTERXY, itemName);
       }

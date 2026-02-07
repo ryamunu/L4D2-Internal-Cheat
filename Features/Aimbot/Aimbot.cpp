@@ -11,35 +11,64 @@
 #include <algorithm>
 #include <vector>
 
-// Layered bone selection for 100% accuracy across all models
+// Production-ready hitbox selection using SetupBones + ValveBiped indices
 bool GetUniversalHitbox(C_BaseEntity *pEntity, int selection, Vector &vOut) {
   C_BaseAnimating *pAnim = pEntity->As<C_BaseAnimating *>();
-  if (!pAnim)
-    return false;
+  if (!pAnim) {
+    vOut = pEntity->WorldSpaceCenter();
+    return true;
+  }
 
+  // ValveBiped bone indices for L4D2
   // 0: Head, 1: Neck, 2: Chest, 3: Stomach, 4: Pelvis
-  int groupMap[] = {1, 1, 2, 3,
-                    3}; // Hitbox Groups: 1=Head, 2=Chest, 3=Stomach/Pelvis
-  const char *nameMap[] = {"head", "neck", "spine2", "spine1", "pelvis"};
-  const char *altNameMap[] = {"Head", "Neck", "Spine_2", "Spine_1", "Pelvis"};
-  int indexFallback[] = {10, 9, 5, 3, 2}; // Common L4D2 indices
+  static const int boneIndices[] = {10, 9, 6, 3, 0};
 
-  // Layer 1: Hitbox Groups (Engine Native)
-  if (pAnim->GetHitboxPositionByGroup(groupMap[selection], vOut))
-    return true;
+  // Bounds check
+  if (selection < 0 || selection > 4)
+    selection = 0;
+  int targetBone = boneIndices[selection];
 
-  // Layer 2: Name Search (Professional model-independent)
-  if (pAnim->GetHitboxPositionByName(nameMap[selection], vOut))
+  // Setup bone matrices
+  matrix3x4_t boneMatrix[128];
+  if (!pAnim->SetupBones(boneMatrix, 128, 0x100, I::GlobalVars->curtime)) {
+    vOut = pEntity->WorldSpaceCenter();
     return true;
-  if (pAnim->GetHitboxPositionByName(altNameMap[selection], vOut))
-    return true;
+  }
 
-  // Layer 3: Index Fallback (Last resort)
-  if (pAnim->GetHitboxPosition(indexFallback[selection], vOut))
+  // Get studiohdr for hitbox data
+  const model_t *pModel = pAnim->GetModel();
+  if (!pModel) {
+    U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
     return true;
+  }
 
-  // Final Layer: World Center
-  vOut = pEntity->WorldSpaceCenter();
+  const studiohdr_t *pHdr = I::ModelInfo->GetStudiomodel(pModel);
+  if (!pHdr) {
+    U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
+    return true;
+  }
+
+  const mstudiohitboxset *pSet = pHdr->pHitboxSet(pAnim->m_nHitboxSet());
+  if (!pSet) {
+    U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
+    return true;
+  }
+
+  // Find hitbox matching our target bone
+  for (int i = 0; i < pSet->numhitboxes; i++) {
+    mstudiobbox *pBox = pSet->pHitbox(i);
+    if (!pBox)
+      continue;
+
+    if (pBox->bone == targetBone) {
+      Vector center = (pBox->bbmin + pBox->bbmax) * 0.5f;
+      U::Math.VectorTransform(center, boneMatrix[pBox->bone], vOut);
+      return true;
+    }
+  }
+
+  // Fallback: use bone position directly
+  U::Math.VectorTransform(Vector(0, 0, 0), boneMatrix[targetBone], vOut);
   return true;
 }
 
